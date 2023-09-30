@@ -1,6 +1,7 @@
 package com.garg.service;
 
 import java.sql.Date;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -139,19 +140,20 @@ public class ExpenseServiceImpl implements IExpenseService {
 		if(startDate==null)
 			startDate=new Date(0);
 		
-		if(endDate==null) {
+		/*	if(endDate==null) {
 			java.util.Date utilDate=new java.util.Date();
 			int year=utilDate.getYear();
 			int month=utilDate.getMonth();
 			int day=utilDate.getMonth();
 			
 			endDate=new Date(year, month, day);
-		}
+		}	*/
 		
 		User loggedInUser=userService.getLoggedInUserDetails();
 		Long userId=loggedInUser.getId();
 		
-		Page<Expense> page=repository.findByUserIdAndDateBetween(userId, startDate.toLocalDate(), endDate.toLocalDate(), pageable);	// for logged in user
+		Page<Expense> page=repository.findByUserIdAndDateBetween(
+				userId, startDate.toLocalDate(), (endDate==null) ? LocalDate.now(): endDate.toLocalDate(), pageable);	// for logged in user
 		//	Page<Expense> page=repository.findByDateBetween(startDate.toLocalDate(), endDate.toLocalDate(), pageable); 	for all users
 		
 		return page.toList();

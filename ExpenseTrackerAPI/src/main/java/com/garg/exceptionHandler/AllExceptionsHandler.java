@@ -44,7 +44,7 @@ public class AllExceptionsHandler extends ResponseEntityExceptionHandler {
 	}
 	
 	// It can be handled also like other methods by using MethodArgumentNotValidException name - To Handle @RequestBody Validation Exception
-	@Override
+	//	@Override
 	protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
 			HttpHeaders headers, HttpStatus status, WebRequest request) {
 		// TODO Auto-generated method stub

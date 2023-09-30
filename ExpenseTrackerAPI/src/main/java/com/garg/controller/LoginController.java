@@ -1,7 +1,5 @@
 package com.garg.controller;
 
-import javax.validation.Valid;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +21,8 @@ import com.garg.entity.UserModel;
 import com.garg.service.CustomUserDetailsService;
 import com.garg.service.IUserService;
 import com.garg.util.JwtTokenUtil;
+
+import jakarta.validation.Valid;
 
 // these two rest endpoints should be publicly accessible by anyone that needs no authentication for any user
 

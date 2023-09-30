@@ -2,11 +2,6 @@ package com.garg.filter;
 
 import java.io.IOException;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,6 +13,11 @@ import com.garg.service.CustomUserDetailsService;
 import com.garg.util.JwtTokenUtil;
 
 import io.jsonwebtoken.ExpiredJwtException;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 // Step 3. Create a JwtRequestFilter class to validate JwtToken sent by client with request from 2nd time
 
