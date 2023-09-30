@@ -14,6 +14,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 4. Mapping b/w Expense and User 
 5. Modified Expense service, repository methods & Modified User rest endpoints, service methods for logged in/authenticated user
 6. Jwt Authentication
+7. App Deployment to AWS
 */
 
 @SpringBootApplication
