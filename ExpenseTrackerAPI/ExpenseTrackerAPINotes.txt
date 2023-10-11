@@ -1,0 +1,683 @@
+https://wipro.udemy.com/course/build-production-ready-rest-api-with-spring-boot-expense-manager-api
+
+Closing AWS Account before Aug 1, 2024 to avoid billing 
+
+1. REST endpoints for Expense Module with Exception Handling & Hibernate validations
+2. REST endpoints for User Module
+3. Spring Security 
+4. Mapping b/w Expense and User 
+5. Modified Expense service, repository methods & Modified User rest endpoints, service methods for logged in/authenticated user
+6. JWT Authentication
+7. App Deployment to Production Server/Live Web Server
+	(use spring profiles to change in DataSource configuration application.properties file &
+code deployment via github/jar, db deployment - sql db server online creation in production server/nosql online mongodb server via mongo cloud atlas)
+
+
+Ctrl + Shift + F - to format/indent the file 
+
+Spring Boot Project Structure, Maven Wrapper
+mvnw - for OS other than Windows OS
+mvnw.cmd - for Windows OS
+
+Spring Boot Maven Plugin allows to run spring boot app using maven wrapped to project without installing Maven separately, after building project jar
+	mvn package 
+	
+	java -jar jarName , run using java 
+	or 
+	mvn spring-boot:run , run using maven
+
+Http Status Codes - 
+	100 - 199 - Informational Responses
+	200 - 299 - Successful Responses
+	300 - 399 - Redirection Messages
+	400 - 499 - Client Error Responses 
+	500 - 599 - Server Error Responses
+
+Customization of Http Status Codes for diff Http requests - 
+As by default, for all Http request, 200 - Ok/Success - is the Http Status code
+
+204 - No Content - no o/p data to send back with Http Response to user for deletion
+400 - Bad Request - Due to invalid syntax of client request data i.e., data type send by client to server isn't in format with the rest endpoint syntax
+403 - Forbidden - Client doesn't have right access to resource
+
+Add Server Side Validations to the REST APIs -
+1. Starter for validating Java Bean properties by using Hibernate Validator annotations.
+<dependency>
+	<groupId>org.springframework.boot</groupId>
+	<artifactId>spring-boot-starter-validation</artifactId>
+</dependency>
+		
+2. Apply Hibernate Validator annotations at Java Bean class properties & customize default validation message - 
+	@NotNull(message="Expense name must not be null") - not null/value not included	
+	@NotEmpty - not null & not empty/"",
+	@NotBlank - not null & length > 0/doesn't allow only spaces
+	@Email - checks valid email 
+	@Size(min=3, message="Expense name must have atleast 3 characters") - b/w min and max 
+	@Future - Annotated date is in the future 
+	@Pattern - string matches the regular expression(Regex)
+	
+@NonNull - from lombok at bean property level, for @RequiredArgsConstructor
+
+3. Only save/process client request data if meets bean validating conditions, else do not save to avoid to save null values in db
+	@Valid - apply with rest controller endpoints arguments/add validations to the REST APIs/validate java bean properties with @RequestBody in POST
+	
+note - To handle HttpStatus Code Related Exceptions, like method argument type mismatch, request body not valid, request not acceptable, etc. 
+	GlobalExceptionHandler class must extends ResponseEntityExceptionHandler & override required methods
+	
+@RestControllerAdvice
+public class AllExceptionsHandler extends ResponseEntityExceptionHandler {
+	
+	// It can be handled also like other methods by using MethodArgumentNotValidException name - To Handle @RequestBody Validation Exception
+	@Override
+	protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex, 
+			HttpHeaders headers, HttpStatus status, WebRequest request) {
+		// TODO Auto-generated method stub
+		
+		Map<String, Object> body=new HashMap<>();
+		
+		body.put("httpStatusCodeValue", HttpStatus.BAD_REQUEST.value() );
+		
+		// to get customized validation messages from exception object
+		List<FieldError> lfe=ex.getBindingResult().getFieldErrors();
+		Stream<FieldError> sfe=lfe.stream();
+		Stream<String> ss=sfe.map( (T) -> T.getDefaultMessage() );
+		List<String> ls=ss.collect(Collectors.toList());
+		
+		body.put("exceptionMessage", ls);
+		
+		body.put("httpStatusCode", HttpStatus.BAD_REQUEST);
+		body.put("timestamp", LocalDateTime.now() );
+		
+		//	return super.handleMethodArgumentNotValid(ex, headers, status, request);
+		return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+	}	
+
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ResponseEntity<ExceptionDetails> handle(MethodArgumentTypeMismatchException e) {
+		ExceptionDetails obj=new ExceptionDetails(
+				HttpStatus.BAD_REQUEST.value(), e.getMessage(), HttpStatus.BAD_REQUEST, LocalDateTime.now() );
+		
+		return new ResponseEntity<>(obj, HttpStatus.BAD_REQUEST);
+	}
+	
+}
+
+@Column(unique=true)	// to avoid to save duplicate email id w.r.t user in db 
+private String email;
+	
+// or avoids to map password value while converting json object to java object on request from client to server	
+@JsonIgnore		// to avoid to print password to user back while converting java object to json object on response from server to client
+private String password;
+
+
+Spring Security for REST API - to generate login username & password
+
+1. 	Add Spring Boot Starter Security dependency
+	<dependency>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-security</artifactId>
+	</dependency>
+
+	<dependency>
+		<groupId>org.springframework.security</groupId>
+		<artifactId>spring-security-test</artifactId>
+		<scope>test</scope>
+	</dependency>
+
+2. any endpoint url redirects to login screen after adding above dependency for 1st time request only for authorization verification(not ask again for other requests)
+	Once the user is authenticated, request goes to requested resouce
+	All endpoints become protected(needs authentication) instead of public(needs no authentication).
+	localhost:8080/ContextRoot/login, 401 -> unauthorized i.e., can't access any resources i.e., rest endpoint without login
+	default login username = user as no configuration yet
+		& password = generated in spring boot console
+
+	or choose in Postman, Authorization -> Basic auth -> Provide username & password
+
+3. Spring Security Control Flow Diagram - back & forth control move
+	Client Request -> 
+	Authentication Filter(Security Context) - chains of ServletFilter -> 
+	Authentication Manager - for first time authentication, identifies authentication type i.e., inMemory/JDBC/LDAP/JWT/Custom -> 
+	Authentication Provider - uses predefined interfaces - UserDetailsService & PasswordEncoder - Authenticates login User credentials i.e., 	Verifies username & password 
+	
+	Security Context - Authentication Filter uses it again to check whether the user is logged in(authenticated) or not(not authenticated) for each  client request,
+		for upcoming client request authentication not use Authentication Manager again if authenticated for existing user.
+
+4. Customize Spring Security for Http Requests & User Details regarding user default login authentication info i.e., by default all resources are protected by Spring Security, so configure to make some resources public i.e., creating  a new user i.e., don't authenticate request for login/register & authenticate all other requests
+	
+Spring Security without the WebSecurityConfigurerAdapter class - 
+https://spring.io/blog/2022/02/21/spring-security-without-the-websecurityconfigureradapter/
+
+Create a configuration class for customizing default Spring Security Configuration with 
+1. SecurityFilterChain Bean - to specify public(needs no auth) & protected(needs auth) Http Request rest endpoints
+2. DaoAuthenticationProvider Bean - to customize user default login inMemory authentication info(username - user & password generated by spring boot)/multiple user login info via hardcoded or via db
+	
+@Configuration
+public class SecurityConfiguration {
+
+	// Step 4. Register the JWT filter with Spring Security Config file i.e., modify SecurityFilterChain Bean
+	//		To tell Spring Security to validate jwt token for all http request to endpoints 
+	@Bean
+	public JwtRequestFilter authenticationJwtTokenFilter() {
+		return new JwtRequestFilter();
+	}
+	
+	// 1. Create SecurityFilterChain Bean - to specify public(needs no auth) & protected(needs auth) Http Request rest endpoints
+	@Bean
+	public SecurityFilterChain createSecurityFilterChainBean(HttpSecurity http) throws Exception {
+		http
+			.csrf().disable()
+			.authorizeHttpRequests()
+			.requestMatchers("/login", "/register").permitAll()
+			.anyRequest().authenticated()
+			.and()
+			.sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS);	// tell not to use session JSessionID, use jwt 
+		
+		http.addFilterBefore(authenticationJwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);
+			
+		http.httpBasic();	// for login using Postman/Microservices	
+		
+		//	http.formLogin();	for form based login in webapp
+		
+		return http.build();
+	}
+
+	@Autowired
+	private CustomUserDetailsService userDetailsService;
+	
+	// 2. Create DaoAuthenticationProvider Bean - to customize user default login inMemory authentication info(username - user & password generated by spring boot)/multiple user login info 
+	@Bean
+	public DaoAuthenticationProvider createAuthenticationProviderBean() {
+		/* User login details are hardcoded but validating user login details from db using CustomUserDetailsService Bean
+		  // without user role & password encoding, spring gives exception
+		UserDetails user1=User.withDefaultPasswordEncoder().username("Shivam Garg").password("11111").authorities("ADMIN").build();
+		UserDetails user2=User.withDefaultPasswordEncoder().username("Harsh Garg").password("22222").authorities("USER").build();
+		
+		InMemoryUserDetailsManager userDetails=new InMemoryUserDetailsManager(user1, user2);
+		*/
+		
+		DaoAuthenticationProvider authenticationProvider=new DaoAuthenticationProvider();
+		
+		authenticationProvider.setUserDetailsService(userDetailsService); 
+		authenticationProvider.setPasswordEncoder(createPasswordEncoderBean());
+		
+		return authenticationProvider;
+	}
+	
+	@Bean
+	public PasswordEncoder createPasswordEncoderBean() {
+		return new BCryptPasswordEncoder();
+	}
+
+	// bean needed for /login endpoint
+	@Bean
+	protected AuthenticationManager createAuthenticationManagerBean(AuthenticationConfiguration configuration) throws Exception {
+		return configuration.getAuthenticationManager();
+	}
+	
+}
+	
+5. As In Spring Security Control Flow Diagram, Authentication Provider uses UserDetailsService & PasswordEncoder interfaces to Authenticate login  	user credentials i.e., Verifies username & password to login
+	default username= user & password= generated in console 
+	
+	as username & password are hardcoded for inMemory Authentication but to validate username & password from db, customize UserDetailsService(I).
+		Use Spring Security in service layer
+		
+	A CustomUserDetailsService class that implements UserDetailsService(I), override callback method that will be called automatically on CustomUserDetailsService bean/object.
+		UserDetails loadUserByUsername(String username); 
+	with findByEmail() in User repository to check whether the login user exists in db or not.
+	& autowire CustomUserDetailsService bean in Security Configuration class
+	
+@Service
+public class CustomUserDetailsService implements UserDetailsService  {
+
+	@Autowired
+	private IUserRepository repository;
+	
+	@Override
+	public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+		// TODO Auto-generated method stub
+		
+		Optional<User> op=repository.findByEmail(email);	// User email is considered as username here
+		
+		User existingUser=op.orElseThrow( () -> new UsernameNotFoundException("User Account doesn't exist for the email : " + email) );
+		
+		UserDetails userDetails=
+			new org.springframework.security.core.userdetails.User(existingUser.getEmail(), existingUser.getPassword(), new ArrayList<>() );
+		// empty ArrayList must need to pass for no user role/authority
+		
+		return userDetails;
+	}
+
+}	
+	
+6. To store password in encrypted format in db instead of plain text, use any PasswordEncoder technique.
+	create PasswordEncoder bean in configuration class & autowire in any layer while saving/updating password to db.
+	
+	@Autowired
+	private PasswordEncoder passwordEncoder;
+	
+	user.setPassword(passwordEncoder.encode(userModel.getPassword()) );
+	User savedUser=repository.save(user);
+
+7. Create/Use /login Rest endpoint for 1st time authentication so to access other protected endpoints without authentication directly
+	& set logged in user details using AuthenticationFilter SecurityContext as it will be used to check whether the user is logged in or not for upcoming requests.
+	
+@RestController
+public class LoginController {
+	
+	@Autowired
+	private AuthenticationManager authenticationManager;
+	
+	// LoginModel Entity has user email & password fields 
+	@PostMapping("/login")
+	public ResponseEntity<HttpStatus> loginUser(@RequestBody LoginModel loginModel) {
+		Authentication authentication=authenticationManager
+				.authenticate(new UsernamePasswordAuthenticationToken(loginModel.getEmail(), loginModel.getPassword() ) );
+		
+		// Saving logged in user authentication details to SecurityContext to get logged in user authentication details
+		SecurityContextHolder.getContext().setAuthentication(authentication);
+		
+		return new ResponseEntity<>(HttpStatus.OK);
+	}
+
+}
+
+UserService - define method to get logged in/authenticated user details for client request authentication after 1st time, so that logged in user can access data related to it
+
+	@Override
+	public User getLoggedInUserDetails() {
+		// TODO Auto-generated method stub
+		
+		// Getting Logged in user authentication details stored in SecurityContext while login
+		Authentication authentication=SecurityContextHolder.getContext().getAuthentication();
+		
+		String email=authentication.getName();
+		
+		Optional<User> op=repository.findByEmail(email);
+		
+		User user=op.orElseThrow( () -> new UsernameNotFoundException("User Account doesn't exist for the email : " + email) );
+		
+		return user;
+	}
+	
+
+Adding JWT Authentication to the application - 
+
+In General, After login to an app, a session created b/w user and app with JSessionID generated by app send to client & back to server by client on each request to validate user session.
+
+Till now, used Session based authentication mechanism(JSessionID) to secure REST api in client side.
+Pass username & password for every HTTP request to access rest endpoint(login/authentication details stored in Authentication Filter SecurityContext) in Server side may hack.
+
+JWT(JSON Web Token), language independent stateless authentication mechanism(doesn't use JSessionID, use JWT)
+
+JWT Structure - JWT has 3 parts  
+	1. Header: Algorithm & Token Type - Encryption Algorithm
+	2. Payload: Data(Authentication/Login Details - username & password)
+	3. Signature - To Sign first two part using secret key only known to user
+
+e.g., encoded & decoded on jwt official website
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.
+eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.
+SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+
+part 1.
+{
+  "alg": "HS256",
+  "typ": "JWT"
+}
+
+part 2.
+{
+  "sub": "1234567890",
+  "name": "John Doe",
+  "iat": 1516239022
+}
+
+part 3.
+HMACSHA256(
+  base64UrlEncode(header) + "." +
+  base64UrlEncode(payload),
+  your-256-bit-secret
+) secret base64 encoded
+
+JWT control flow - like Servlet Session Tracking Mechanism, just replace JSessionID with JWT token
+	1. While login first time(Authentication/Login Details) - Email/Password to Server
+			(2. Authenticate user in login rest endpoint & 3. Generate JWT Token/JSessionID)
+	4. Return JWT/JSessionID to client(Either store in cookies/session/Storage Medium for future request)
+	5. Pass JWT token/JSessionID in header i.e., key as Authorization & value as Bearer <Jwt Token Value>
+		while sending client request to rest endpoint, if don't pass server sends unauthorized error
+	So, passing JWT token is more secure than JSessionID due to encryption structure on each client request to rest endpoint
+
+1. 	<!-- https://mvnrepository.com/artifact/io.jsonwebtoken/jjwt -->
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt</artifactId>
+    <version>0.9.1</version>
+</dependency>
+
+2. Modify Login rest endpoint -
+As login rest endpoint is used for authentication/login user details, so to access other rest endpoints without authentication(or you can use with authentication first)
+	After client authentication, generate JWT token & return to client in ResponseEntity<String>
+		
+	// JwtTokenModel class with String jwtToken field
+	
+public class LoginController {
+
+	@Autowired
+	private IUserService service;
+	
+	@Autowired
+	private AuthenticationManager authenticationManager;
+	
+	/*	@PostMapping("/login")
+	public ResponseEntity<HttpStatus> loginUser(@RequestBody LoginModel loginModel) {
+		Authentication authentication=authenticationManager
+				.authenticate(new UsernamePasswordAuthenticationToken(loginModel.getEmail(), loginModel.getPassword() ) );
+		
+		// Saving logged in user authentication details to SecurityContext
+		SecurityContextHolder.getContext().setAuthentication(authentication);
+		
+		return new ResponseEntity<>(HttpStatus.OK);
+	}	*/
+	
+	@Autowired
+	private CustomUserDetailsService customUserDetailsService;
+	
+	@Autowired
+	private JwtTokenUtil jwtTokenUtil;
+	
+	// Step 1. Generate JwtToken after client authentication & return JwtToken to client for first time
+	@PostMapping("/login")
+	public ResponseEntity<JwtTokenModel> loginUser(@RequestBody LoginModel loginModel) throws Exception {
+		// client authentication
+		authenticateUser(loginModel.getEmail(), loginModel.getPassword());
+		
+		// need authenticated user details(username & password) to generate JwtToken
+		UserDetails authenticatedUserDetails=customUserDetailsService.loadUserByUsername(loginModel.getEmail());
+		
+		// Step 2. JwtTokenUtil class to generate JwtToken 
+		final String jwtToken=jwtTokenUtil.generateJwtToken(authenticatedUserDetails);
+		
+		JwtTokenModel body=new JwtTokenModel(jwtToken);
+		
+		// returning jwt token to client
+		return new ResponseEntity<>(body, HttpStatus.OK);
+	}
+	
+	private void authenticateUser(String email, String password) throws Exception {
+		try {
+			authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(email, password) );
+		} catch(DisabledException e) {
+			throw new Exception("User Disabled");
+		} catch(BadCredentialsException e) {
+			throw new Exception("Bad Credentials");
+		}
+	}
+	
+	@PostMapping("/register")
+	public ResponseEntity<User> createNewUser(@Valid @RequestBody UserModel userModel) {
+		User body=service.createUser(userModel);
+	
+		return new ResponseEntity<>(body, HttpStatus.CREATED);
+	}
+	
+}
+
+3. Create JwtTokenUtil class to generate Jwt Token, application.properties file - jwt.secret.key= b2tech
+	
+@Component
+public class JwtTokenUtil {
+
+	private static final long JWT_TOKEN_VALIDITY= 5*60*60;
+	
+	@Value("${jwt.secret.key}")
+	private String secretKey;
+	
+	public String generateJwtToken(UserDetails authenticatedUserDetails) {
+		Map<String, Object> map=new HashMap<>();
+		
+		String jwtToken=Jwts.builder()
+							.setClaims(map)
+							.setSubject(authenticatedUserDetails.getUsername())
+							.setIssuedAt(new Date(System.currentTimeMillis()) )
+							.setExpiration(new Date(System.currentTimeMillis() + JWT_TOKEN_VALIDITY * 1000) )
+							.signWith(SignatureAlgorithm.HS512, secretKey)
+							.compact();		// to convert to String
+	
+		return jwtToken;
+	}
+	
+	// JwtToken 2nd part structure contains data/username 
+	public String getUsernameFromJwtToken(String jwtToken) {
+		return getClaimFromJwtToken(jwtToken, Claims::getSubject);
+	}
+	
+	// didn't get Java8 Functional Programming - Function passed as an method argument & return as a function
+	private <T> T getClaimFromJwtToken(String token, Function<Claims, T> claimsResolver) {
+		final Claims claims=Jwts.parser()
+								.setSigningKey(secretKey)
+								.parseClaimsJws(token)
+								.getBody();
+		
+		return claimsResolver.apply(claims);
+	}
+
+	public boolean validateJwtToken(String jwtToken, UserDetails userDetails) {
+		// TODO Auto-generated method stub
+		
+		final String username=getUsernameFromJwtToken(jwtToken);
+	
+		return username.equals(userDetails.getUsername()) && !isJwtTokenExpired(jwtToken);
+	}
+
+	private boolean isJwtTokenExpired(String jwtToken) {
+		// TODO Auto-generated method stub
+		
+		final Date expirationDate=getExpirationDateFromJwtToken(jwtToken);
+		
+		return expirationDate.before(new Date());
+	}
+
+	private Date getExpirationDateFromJwtToken(String jwtToken) {
+		// TODO Auto-generated method stub
+		
+		return getClaimFromJwtToken(jwtToken, Claims::getExpiration);
+	}
+	
+}
+
+
+4. didn't get - Create a JwtRequestFilter class to validate Jwt Token sent by client with request from 2nd time
+	
+public class JwtRequestFilter extends OncePerRequestFilter {
+
+	@Autowired
+	private JwtTokenUtil jwtTokenUtil;
+
+	@Autowired
+	private CustomUserDetailsService userDetailsService;
+	
+	@Override
+	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+			throws ServletException, IOException {
+		// TODO Auto-generated method stub
+		
+		final String requestTokenHeader=request.getHeader("Authorization");
+		
+		String requestJwtToken=null;
+		String username=null;
+		
+		if(requestTokenHeader!=null && requestTokenHeader.startsWith("Bearer ") ) {
+			requestJwtToken=requestTokenHeader.substring(7);
+		
+			try {
+				username=jwtTokenUtil.getUsernameFromJwtToken(requestJwtToken);
+			} catch(IllegalArgumentException e) {
+				throw new RuntimeException("Unable to get JWT Token");
+			} catch(ExpiredJwtException e) {
+				throw new RuntimeException("JWT Token has expired");
+			}
+		}
+		
+		// In Spring Security, Authentication Filter uses SecurityContext for saving logged in/authenticated user details 
+		// once we get the token from the request, validate it
+		if(username!=null && SecurityContextHolder.getContext().getAuthentication()==null ) {
+			UserDetails userDetails=userDetailsService.loadUserByUsername(username);
+			
+			if(jwtTokenUtil.validateJwtToken(requestJwtToken, userDetails) ) {	// if user is authenticated
+				UsernamePasswordAuthenticationToken authToken=
+						new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities() );
+			
+				authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request) );
+				
+				// save authenticated user in Spring Security SecurityContext uses by Authentication Filter
+				SecurityContextHolder.getContext().setAuthentication(authToken);
+			}
+		}
+		
+		filterChain.doFilter(request, response);	// continue Spring Security Authentication Filter
+	}
+
+}
+
+
+5. Register the JWT filter with Spring Security Configuration file 
+
+@Configuration
+public class SecurityConfiguration {
+
+	@Bean
+	public JwtRequestFilter authenticationJwtTokenFilter() {
+		return new JwtRequestFilter();
+	}
+	
+	// Step 4. Register the JWT filter with Spring Security Config file i.e., modify SecurityFilterChain Bean
+	//		To tell Spring Security to validate jwt token for all http request to endpoints 
+	
+	// 1. Create SecurityFilterChain Bean - to specify public(needs no auth) & protected(needs auth) Http Request rest endpoints
+	@Bean
+	public SecurityFilterChain createSecurityFilterChainBean(HttpSecurity http) throws Exception {
+		http
+			.csrf().disable()
+			.authorizeHttpRequests()
+			.requestMatchers("/login", "/register").permitAll()
+			.anyRequest().authenticated()
+			.and()
+			.sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS);	// tell not to use session JSessionID, use jwt 
+		
+		http.addFilterBefore(authenticationJwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);
+			
+		http.httpBasic();	// for login using Postman/Microservices	
+		
+		//	http.formLogin();	for form based login in webapp
+		
+		return http.build();
+	}
+	
+}
+
+
+Postman feature - Set JWT to all requests of a collection
+
+Authentication Type - 
+1. Inherit Auth from parent - inherits token from the collection of requests
+2. No Auth - Requires no auth 
+3. Basic Auth - Requires authentication using login credentials i.e., login username & password 
+4. Token - Use JWT Token
+
+In postman, the jwt token generated by login rest endpoint
+To integrate jwt token to all authentication endpoints(private) request automatically, set token value in collection of all requests instead of each request manually in Authorization tab(Bearer Token) and choose Authentication Type for no authentication endpoints like login/register(public) as no-auth & for other rest endpoints, Authentication Type as Inherit auth from Parent
+
+Pre-request Script tab - execute code before sending request to rest endpoint
+Tests tab - execute code after execution of request i.e., after getting response from rest endpoint
+
+Set jwt token value in collection Authorization tab as Bearer Token automatically using environmental variable
+execute this code in login rest endpoint under Tests tab after getting jwt token value, set token value in environmental variable 
+where pm= Postman Variable
+if(pm.response.code === 200) {
+    pm.environment.set('authJwtToken', pm.response.json().jwtToken)
+}
+
+
+Deploying Spring Boot app(Github) to AWS/Live Production Server(Cloud) - localhost or IP address url(Dev/test env in tomcat server) will be replaced by host DNS url(prod env)
+
+1. Create RDS Service - Relational Database Service, 
+	Choose Templates as Free Tier, public access, root, shivamgargmi05 - for the first time 
+	
+2. Create EB Service - Elastic Bean Stalk Service - to deploy the app 
+
+You can access AWS database from MySQL workbench by setting inbound rule 
+	EC2 Security Group - Inbound Rule -> Edit Inbound Rule -> Add Rule -> MySQL/Aurora -> Anywhere IPv4 -> Save rules
+
+Create a new mysql connection by -
+	Connection Name - AWS Database
+	Hostname - shivamgargmi05.cjbvm0h3jmjx.ap-south-1.rds.amazonaws.com
+	username - root 
+	password - shivamgargmi05
+	port - 3306
+
+3. modify application.properties -
+# AWS mysql db configuration
+spring.datasource.url= jdbc:mysql://shivamgargmi05.cjbvm0h3jmjx.ap-south-1.rds.amazonaws.com:3306/db1
+spring.datasource.username= root
+spring.datasource.password= shivamgargmi05
+
+# bydefault 8080 for application deployment in localhost tomcat server but 5000 for AWS production server
+server.port= 5000
+
+4. upload app jar/connect via github to EB Service 
+	by choosing platform as java 
+
+Open IAM Console → In the navigation pane of the console, choose Roles and then create role → Under Trusted entity type, choose AWS service → Under Use case, choose EC2 → Choose Next → Attach- AWSElasticBeanstalkWebTier, AWSElasticBeanstalkWorkerTier, AWSElasticBeanstalkMulticontainerDocker → Choose Next → Enter a name for the role - aws-elasticbeanstalk-ec2-role → Choose Create role.
+
+http:localhost:8080/ - for tomcat &
+http://expensetrackerapi-env-2.eba-h33y7jn3.ap-south-1.elasticbeanstalk.com/ - 404 i.e., app is up & running as no endpoint for default url
+
+
+Introduction to Docker(DevOps Tool) - 
+
+Virtual Machine - running a different virtual/guest OS on a primary OS i.e., ubuntu on windows
+Disadvantage - Needs OS license, shared h/w resources like RAM, ROM & CPU b/w primary & guest OS, takes time to start & stop 
+
+Docker/Containerization S/W - build, run, deploy & ship the application, 
+	package the app into a different environment(container) automatically downloads libraries & dependencies,
+	Container allows multiple OS to run side by side,
+	Docker replaces Virtual Machine 
+	
+Docker Installation - 
+
+Docker Working - 
+
+1. Create a Docker File 
+2. Create Docker Image using Docker File 
+3. Docker Hub using Docker commands - create Docker Hub Account like GitHub using Git commands - to push Docker Image in global repository, so executed globally
+
+Dockerize Java Program, Spring Boot Application, Spring Boot Application with MySQL DB - 
+
+
+ToDoAPI - 
+Validations in Entity via(@Valid - Spring Data JPA)/Document - Spring Data Mongodb via configuration class required beans - 
+
+@Configuration
+public class ValidateDocument {
+
+	@Bean
+	public ValidatingMongoEventListener validatingMongoEventListenerBean() {
+		return new ValidatingMongoEventListener(localValidatorFactoryBean());
+	}
+
+	@Bean
+	public LocalValidatorFactoryBean localValidatorFactoryBean() {
+		return new LocalValidatorFactoryBean();
+	}
+	
+}
+
+public interface IToDoRepository extends MongoRepository<ToDo, String> {
+
+	@Query(value="{'name' : ?0}")
+	Optional<ToDo> findByName(String name);
+	
+}
+
+
